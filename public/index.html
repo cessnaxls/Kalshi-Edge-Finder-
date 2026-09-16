@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Kalshi Edge Lab</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div><div class="brand">EDGE<span>LAB</span></div><div class="sub">Kalshi market research workstation</div></div>
+  <div class="live"><i></i><span id="status">READY</span></div>
+</header>
+<main>
+<section class="hero">
+ <div>
+  <div class="eyebrow">PROBABILITY × PRICE × EXECUTION</div>
+  <h1>Find discrepancies.<br><em>Measure uncertainty.</em></h1>
+  <p>Compare your researched probability estimates against live executable Kalshi prices. Edge Lab never invents a probability: enter a model estimate, then inspect price, spread, liquidity and expected value.</p>
+ </div>
+ <div class="heroCard">
+  <div class="hcTitle">HOW EDGE WORKS</div>
+  <div class="formula">EDGE = P<sub>model</sub> − P<sub>entry</sub> − costs</div>
+  <div class="muted">Positive edge is a model discrepancy, not a guarantee of profit.</div>
+ </div>
+</section>
+
+<section class="panel builder">
+ <div class="panelHead"><div><b>MARKET INPUT</b><small>One ticker per line. Optional probability and cost buffer.</small></div>
+ <button class="ghost" id="sample">LOAD EXAMPLE</button></div>
+ <div id="rows"></div>
+ <div class="actions"><button class="ghost" id="add">＋ ADD MARKET</button><button class="primary" id="analyze">ANALYZE MARKETS →</button></div>
+</section>
+
+<section id="summary" class="summary hidden">
+ <div class="metric"><small>MARKETS</small><strong id="nMarkets">—</strong></div>
+ <div class="metric"><small>TOP DISCREPANCY</small><strong id="topEdge">—</strong></div>
+ <div class="metric"><small>BEST SIDE</small><strong id="topSide">—</strong></div>
+ <div class="metric"><small>UPDATED</small><strong id="updated">—</strong></div>
+</section>
+
+<section class="panel hidden" id="resultsPanel">
+ <div class="panelHead"><div><b>EDGE RANKING</b><small>Sorted by estimated executable discrepancy</small></div>
+ <div class="seg"><button class="active" data-mode="beginner">BEGINNER</button><button data-mode="quant">QUANT</button></div></div>
+ <div class="tableWrap"><table>
+  <thead><tr><th>MARKET</th><th>YES BID/ASK</th><th>MODEL YES</th><th>BEST SIDE</th><th>EST. EDGE</th><th>DATA QUALITY</th><th></th></tr></thead>
+  <tbody id="tbody"></tbody>
+ </table></div>
+</section>
+
+<section id="detail" class="detail hidden"></section>
+</main>
+<footer>Research tool only · Model estimates are user supplied · Verify settlement rules and data before risking capital.</footer>
+<script src="/app.js"></script>
+</body></html>
