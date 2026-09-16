@@ -71,9 +71,9 @@ app.post("/api/analyze",async(req,res)=>{
    let edgeYes=model?model.prob-ask:null,edgeNo=model?(1-model.prob)-noAsk:null;
    let side=model?(edgeYes>=edgeNo?"YES":"NO"):null, edge=model?Math.max(edgeYes,edgeNo):null;
    let uncertainty=model?model.uncertainty:null, conservative=edge==null?null:edge-uncertainty;
-   let vol=Number(m.volume_24h_fp||m.volume_fp||m.volume||0),oi=Number(m.open_interest_fp||m.open_interest||0);
    out.push({ticker:m.ticker,title:m.title,subtitle:m.subtitle,rules:m.rules_primary||"",category:cat,bid,ask,noAsk,spread,vol,oi,close:m.close_time,
     modelProbability:model?.prob??null,modelName:model?.model??null,modelSource:model?.source??null,modelInputs:model?.inputs??null,
+    modelIndependent:model?.independent!==false,modelFallback:!!model?.fallback,
     uncertainty,edgeYes,edgeNo,bestSide:side,rawEdge:edge,conservativeEdge:conservative,
     state:model?"MODELED":(error?"DATA ERROR":"NEEDS DATA ADAPTER"),dataQuality:microScore({spread,vol,oi})});
   }
@@ -364,6 +364,50 @@ async function fundamentalRouter(m){
   return null;
 }
 
+/*
+ Universal fallback model.
+ This guarantees a numeric estimate for every market with usable quotes.
+ It is deliberately labelled MARKET-IMPLIED rather than independent edge:
+ the prior comes from the market itself, then is conservatively shrunk toward
+ 50% according to liquidity/spread/data quality. Microstructure may make only
+ a small bounded adjustment. This prevents "no model" while avoiding the false
+ claim that a market-derived prior independently proves mispricing.
+*/
+function universalFallbackModel(m,bid,ask,noAsk,micro,vol,oi){
+  let mid=null;
+  if(bid>0&&ask>0) mid=(bid+ask)/2;
+  else if(ask>0&&noAsk>0) mid=(ask+(1-noAsk))/2;
+  else if(ask>0) mid=ask;
+  else if(bid>0) mid=bid;
+  if(mid==null||!Number.isFinite(mid)) mid=.5;
+
+  const spread=(ask>0&&bid>0)?Math.max(0,ask-bid):.20;
+  const depth=Math.log10(1+Math.max(0,Number(oi)||0));
+  const activity=Math.log10(1+Math.max(0,Number(vol)||0));
+  // confidence in the market-derived prior, not confidence that outcome occurs
+  let priorWeight=.35 + Math.min(.35,(depth+activity)/25) - Math.min(.25,spread*1.5);
+  priorWeight=Math.max(.20,Math.min(.82,priorWeight));
+  let prob=.5 + (mid-.5)*priorWeight;
+
+  // bounded microstructure adjustment: maximum ±2 percentage points
+  const flow=Number.isFinite(micro?.score)?micro.score:0;
+  const flowAdj=Math.max(-.02,Math.min(.02,flow*.02));
+  prob+=flowAdj;
+  prob=Math.max(.01,Math.min(.99,prob));
+
+  // Wide uncertainty because this fallback is not independent evidence.
+  const uncertainty=Math.min(.30,Math.max(.10,.08+spread*.8+(1-priorWeight)*.12));
+  return {
+    prob,
+    model:"Universal market-implied Bayesian fallback",
+    source:"Kalshi executable quotes + liquidity/activity + bounded order-flow adjustment",
+    inputs:{marketMid:mid,priorWeight,flowAdjustment:flowAdj,spread,volume24h:vol,openInterest:oi},
+    uncertainty,
+    independent:false,
+    fallback:true
+  };
+}
+
 async function analyzeOne(m){
   let bid=dollars(m,"yes_bid_dollars","yes_bid"),ask=dollars(m,"yes_ask_dollars","yes_ask");
   let noAsk=dollars(m,"no_ask_dollars","no_ask") || (bid?1-bid:0), spread=ask&&bid?ask-bid:null;
@@ -371,6 +415,8 @@ async function analyzeOne(m){
   try{model=await fundamentalRouter(m)}catch(e){error=e.message}
   let [book,trades]=await Promise.all([kalshiOrderbook(m.ticker),kalshiTrades(m.ticker)]);
   let micro=microstructureModel(book,trades,m);
+  let vol=Number(m.volume_24h_fp||m.volume_fp||m.volume||0),oi=Number(m.open_interest_fp||m.open_interest||0);
+  if(!model) model=universalFallbackModel(m,bid,ask,noAsk,micro,vol,oi);
   let edgeYes=model?model.prob-ask:null,edgeNo=model?(1-model.prob)-noAsk:null;
   let side=model?(edgeYes>=edgeNo?"YES":"NO"):null, raw=model?Math.max(edgeYes,edgeNo):null;
   let uncertainty=model?model.uncertainty:null, conservative=raw==null?null:raw-uncertainty;
@@ -378,8 +424,9 @@ async function analyzeOne(m){
   return {ticker:m.ticker,eventTicker:m.event_ticker,title:m.title,subtitle:m.subtitle,rules:m.rules_primary||"",
     category:cat,bid,ask,noAsk,spread,vol,oi,close:m.close_time,
     modelProbability:model?.prob??null,modelName:model?.model??null,modelSource:model?.source??null,modelInputs:model?.inputs??null,
+    modelIndependent:model?.independent!==false,modelFallback:!!model?.fallback,
     uncertainty,edgeYes,edgeNo,bestSide:side,rawEdge:raw,conservativeEdge:conservative,
-    state:model?"MODELED":(error?"DATA ERROR":"NO FUNDAMENTAL MODEL"),dataQuality:microScore({spread,vol,oi}),
+    state:model?.fallback?"FALLBACK MODEL":(model?"INDEPENDENT MODEL":(error?"DATA ERROR":"NO MODEL")),dataQuality:microScore({spread,vol,oi}),
     microScore:micro.score,microLabel:micro.label,microInputs:micro.inputs,structural:[]};
 }
 app.get("/api/scan",async(req,res)=>{
@@ -402,8 +449,8 @@ app.get("/api/scan",async(req,res)=>{
    }
    const minEdge=Math.max(0,Number(req.query.min_edge||0))/100;
    for(const x of out)x.structural=structural.get(x.ticker)||[];
-   let ranked=out.filter(x=>(x.modelProbability!=null && x.conservativeEdge>minEdge)||x.structural.length)
-     .map(x=>({...x,rankScore:Math.max(x.conservativeEdge??-1,...x.structural.map(a=>a.gross||0))}))
+   let ranked=out.filter(x=>(x.modelProbability!=null && x.modelIndependent && x.conservativeEdge>minEdge)||x.structural.length)
+     .map(x=>({...x,rankScore:Math.max((x.modelIndependent?x.conservativeEdge:null)??-1,...x.structural.map(a=>a.gross||0))}))
      .sort((a,b)=>b.rankScore-a.rankScore);
    res.json({universe,openMarketsSeen:all.length,selectedMarkets:selected.length,modeled:out.filter(x=>x.modelProbability!=null).length,
      positiveEdges:ranked.length,unsupported:out.filter(x=>x.modelProbability==null).length,
@@ -413,4 +460,4 @@ app.get("/api/scan",async(req,res)=>{
  }catch(e){res.status(502).json({error:e.message})}
 });
 
-app.listen(PORT,()=>console.log("Edge Lab v6 on",PORT));
+app.listen(PORT,()=>console.log("Edge Lab v7 on",PORT));
