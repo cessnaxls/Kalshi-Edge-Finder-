@@ -1,54 +1,21 @@
-const $=s=>document.querySelector(s), rows=$("#rows"); let data=[], mode="beginner";
-function addRow(t="",p="",c="1"){
- const d=document.createElement("div"); d.className="marketRow";
- d.innerHTML=`<div class="field"><label>KALSHI TICKER</label><input class="ticker" placeholder="e.g. KX..." value="${t}"></div>
- <div class="field"><label>YOUR MODEL P(YES) %</label><input class="prob" type="number" min="0" max="100" step=".1" placeholder="optional" value="${p}"></div>
- <div class="field"><label>COST BUFFER ¢</label><input class="cost" type="number" min="0" step=".1" value="${c}"></div>
- <button class="remove" title="Remove">×</button>`;
- d.querySelector(".remove").onclick=()=>{if(rows.children.length>1)d.remove()}; rows.appendChild(d);
-}
-addRow(); addRow();
-$("#add").onclick=()=>addRow();
-$("#sample").onclick=()=>{rows.innerHTML="";addRow("KXEXAMPLE","55","1");addRow("KXEXAMPLE2","42","1")};
-document.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{document.querySelectorAll(".seg button").forEach(x=>x.classList.remove("active"));b.classList.add("active");mode=b.dataset.mode;render()});
-const pct=x=>x==null?"—":(x*100).toFixed(1)+"%"; const cents=x=>x==null?"—":(x*100).toFixed(1)+"¢";
-$("#analyze").onclick=async()=>{
- const markets=[...rows.children].map(r=>({ticker:r.querySelector(".ticker").value,modelProbability:r.querySelector(".prob").value===""?null:Number(r.querySelector(".prob").value)/100,costBuffer:Number(r.querySelector(".cost").value||0)})).filter(x=>x.ticker.trim());
- if(!markets.length)return alert("Enter at least one Kalshi ticker.");
- $("#status").textContent="ANALYZING"; $("#analyze").disabled=true;
- try{const r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({markets})});const j=await r.json();if(!r.ok)throw Error(j.error);data=j.results;render();if(j.missing?.length)alert("Not returned by Kalshi: "+j.missing.join(", "));$("#updated").textContent=new Date(j.generatedAt).toLocaleTimeString()}
- catch(e){alert(e.message)}finally{$("#status").textContent="LIVE";$("#analyze").disabled=false}
+let D=[];const $=s=>document.querySelector(s),pc=x=>x==null?"—":(x*100).toFixed(1)+"%",ct=x=>x==null?"—":(x*100).toFixed(1)+"¢";
+$("#go").onclick=async()=>{let tickers=$("#tickers").value.split(/[\s,]+/).filter(Boolean);if(!tickers.length)return;$("#msg").textContent="Researching markets…";$("#go").disabled=true;try{let r=await fetch("/api/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({tickers})}),j=await r.json();if(!r.ok)throw Error(j.error);D=j.results;render(j)}catch(e){$("#msg").textContent=e.message}finally{$("#go").disabled=false}};
+function render(j){$("#stats").classList.remove("hide");$("#results").classList.remove("hide");$("#count").textContent=D.length;$("#modeled").textContent=D.filter(x=>x.state==="MODELED").length;let t=D.find(x=>x.rawEdge!=null);$("#top").textContent=t?pc(t.rawEdge):"—";$("#time").textContent=new Date(j.at).toLocaleTimeString();$("#msg").textContent=j.missing?.length?`Missing: ${j.missing.join(", ")}`:"Analysis complete";
+$("#body").innerHTML=D.map((x,i)=>`<tr><td class="market"><b>${x.title||x.ticker}</b><small>${x.ticker}</small></td><td>${x.category.toUpperCase()}</td><td>${ct(x.bid)} / ${ct(x.ask)}</td><td class="${x.modelProbability==null?"state":""}">${x.modelProbability==null?x.state:pc(x.modelProbability)}</td><td>${pc(x.uncertainty)}</td><td>${x.bestSide||"—"}</td><td class="${x.rawEdge>=0?"pos":"neg"}">${x.rawEdge==null?"—":(x.rawEdge>=0?"+":"")+pc(x.rawEdge)}</td><td class="${x.conservativeEdge>=0?"pos":"neg"}">${x.conservativeEdge==null?"—":(x.conservativeEdge>=0?"+":"")+pc(x.conservativeEdge)}</td><td><button class="inspect" onclick="detail(${i})">INSPECT →</button></td></tr>`).join("")}
+window.detail=i=>{let x=D[i],modeled=x.modelProbability!=null;$("#detail").innerHTML=`<div class="detailgrid"><div class="card"><div class="eyebrow">${x.ticker} · ${x.category.toUpperCase()}</div><h2>${x.title}</h2><div class="big ${x.rawEdge>=0?"pos":""}">${modeled?((x.rawEdge>=0?"+":"")+pc(x.rawEdge)):"NO MODEL"}</div><p>${modeled?`Raw ${x.bestSide} model/market discrepancy.`:"This proposition was parsed, but this build does not yet have a trustworthy independent data adapter for this market type."}</p>${modeled?`<div class="source"><b>MODEL</b><br>${x.modelName}<br><b>INDEPENDENT DATA</b><br>${x.modelSource}<br><b>INPUTS</b><br>${JSON.stringify(x.modelInputs,null,2)}</div>`:""}<div class="warn">${modeled?"Conservative edge subtracts the model's uncertainty allowance from raw discrepancy. It is not a guarantee or a calibrated profit forecast.":"EdgeLab deliberately refuses to infer a probability from Kalshi's own price or from unsupported AI intuition."}</div></div><div class="card"><div class="eyebrow">AUDIT</div>${kv("YES bid",ct(x.bid))}${kv("YES ask",ct(x.ask))}${kv("NO ask",ct(x.noAsk))}${kv("Spread",ct(x.spread))}${kv("Model YES",pc(x.modelProbability))}${kv("Uncertainty allowance",pc(x.uncertainty))}${kv("YES discrepancy",pc(x.edgeYes))}${kv("NO discrepancy",pc(x.edgeNo))}${kv("Market-data quality",x.dataQuality+"/100")}${kv("24h volume",Number(x.vol).toLocaleString())}${kv("Open interest",Number(x.oi).toLocaleString())}<h4>SETTLEMENT RULE</h4><p style="color:#87958e;line-height:1.6">${x.rules||"Not returned."}</p></div></div>`;$("#detail").scrollIntoView({behavior:"smooth"})};function kv(a,b){return `<div class="kv"><span>${a}</span><span>${b}</span></div>`}
+$("#scan").onclick=async()=>{
+  $("#scan").disabled=true; $("#scanmeta").firstElementChild.textContent="Scanning complete open-market universe…";
+  try{
+    let r=await fetch("/api/scan?universe=sports_crypto"),j=await r.json(); if(!r.ok)throw Error(j.error);
+    $("#scanresults").classList.remove("hide");
+    $("#scanstats").textContent=`${j.openMarketsSeen.toLocaleString()} open seen · ${j.selectedMarkets.toLocaleString()} sports/crypto · ${j.modeled.toLocaleString()} modeled · ${j.unsupported.toLocaleString()} unsupported · ${j.positiveEdges} positive conservative edges`;
+    $("#scanmeta").firstElementChild.textContent=`Updated ${new Date(j.at).toLocaleTimeString()}`;
+    $("#scanbody").innerHTML=j.ranked.length?j.ranked.map((x,i)=>`<tr>
+      <td class="rank">#${i+1}</td><td class="market"><b>${x.title||x.ticker}</b><small>${x.ticker}</small></td>
+      <td>${x.category.toUpperCase()}</td><td>${pc(x.modelProbability)}</td>
+      <td>${ct(x.bestSide==="YES"?x.ask:x.noAsk)}</td><td>${x.bestSide}</td>
+      <td class="pos">+${pc(x.rawEdge)}</td><td>${pc(x.uncertainty)}</td><td class="pos">+${pc(x.conservativeEdge)}</td></tr>`).join("")
+      :`<tr><td colspan="9" class="state">No positive independently modeled uncertainty-adjusted edges found in this scan.</td></tr>`;
+  }catch(e){$("#scanmeta").firstElementChild.textContent=e.message}
+  finally{$("#scan").disabled=false}
 };
-function render(){
- if(!data.length)return; $("#summary").classList.remove("hidden");$("#resultsPanel").classList.remove("hidden");
- $("#nMarkets").textContent=data.length;
- const top=data.find(x=>x.bestEdge!=null);$("#topEdge").textContent=top?pct(top.bestEdge):"NEED MODEL";$("#topSide").textContent=top?top.bestSide:"—";
- $("#tbody").innerHTML=data.map((x,i)=>`<tr>
- <td class="marketName"><b>${x.title||x.ticker}</b><small>${x.ticker}</small></td>
- <td>${cents(x.bid)} / ${cents(x.ask)} ${x.spread!=null?`<small>(${cents(x.spread)} spr)</small>`:""}</td>
- <td>${pct(x.modelProbability)}</td><td><span class="pill">${x.bestSide||"—"}</span></td>
- <td class="edge ${x.bestEdge>=0?"pos":"neg"}">${x.bestEdge==null?"ADD MODEL":((x.bestEdge>=0?"+":"")+pct(x.bestEdge))}</td>
- <td>${x.dataQuality}/100</td><td><button class="view" onclick="detail(${i})">INSPECT →</button></td></tr>`).join("");
-}
-window.detail=i=>{
- const x=data[i], side=x.bestSide||"—", e=x.bestEdge;
- $("#detail").classList.remove("hidden");
- $("#detail").innerHTML=`<div class="detailGrid">
- <div class="panel"><div class="eyebrow">${x.ticker}</div><h2>${x.title||x.ticker}</h2>
- <small>${x.subtitle||""}</small>
- <div class="bigEdge">${e==null?"NO MODEL":(e>=0?"+":"")+pct(e)}</div>
- <div>${e==null?"Enter a probability estimate to calculate model-vs-market discrepancy.":`Estimated ${side} discrepancy after your cost buffer.`}</div>
- <div class="bars">
- ${bar("Market YES ask",x.ask)}${bar("Your model YES",x.modelProbability)}
- </div>
- <div class="warning">This is not a win probability generated by the app. “Edge” is only as good as the probability model supplied. Thin liquidity, settlement-rule mistakes, stale evidence and model error can overwhelm an apparent discrepancy.</div>
- </div>
- <div class="panel"><div class="hcTitle">MARKET MICROSTRUCTURE</div>
- ${kv("YES bid",cents(x.bid))}${kv("YES ask",cents(x.ask))}${kv("NO ask",cents(x.noAsk))}${kv("Spread",cents(x.spread))}${kv("24h volume",num(x.volume24h))}${kv("Liquidity","$"+num(x.liquidity))}${kv("Open interest",num(x.openInterest))}${kv("Data quality",x.dataQuality+"/100")}${kv("Closes",x.closeTime?new Date(x.closeTime).toLocaleString():"—")}
- <div class="hcTitle" style="margin-top:25px">SETTLEMENT RULE</div><p class="muted" style="line-height:1.6">${x.rules||"No primary rule returned."}</p>
- </div></div>`;
- $("#detail").scrollIntoView({behavior:"smooth",block:"start"});
-};
-function bar(name,v){let w=v==null?0:Math.max(0,Math.min(100,v*100));return `<div class="barRow"><div class="barTop"><span>${name}</span><span>${pct(v)}</span></div><div class="track"><div class="fill" style="width:${w}%"></div></div></div>`}
-function kv(a,b){return `<div class="kv"><span>${a}</span><span>${b}</span></div>`}
-function num(x){return Number(x||0).toLocaleString(undefined,{maximumFractionDigits:1})}

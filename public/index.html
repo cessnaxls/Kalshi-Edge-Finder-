@@ -1,54 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>Kalshi Edge Lab</title>
-<link rel="stylesheet" href="/style.css">
-</head>
-<body>
-<header>
-  <div><div class="brand">EDGE<span>LAB</span></div><div class="sub">Kalshi market research workstation</div></div>
-  <div class="live"><i></i><span id="status">READY</span></div>
-</header>
-<main>
-<section class="hero">
- <div>
-  <div class="eyebrow">PROBABILITY × PRICE × EXECUTION</div>
-  <h1>Find discrepancies.<br><em>Measure uncertainty.</em></h1>
-  <p>Compare your researched probability estimates against live executable Kalshi prices. Edge Lab never invents a probability: enter a model estimate, then inspect price, spread, liquidity and expected value.</p>
- </div>
- <div class="heroCard">
-  <div class="hcTitle">HOW EDGE WORKS</div>
-  <div class="formula">EDGE = P<sub>model</sub> − P<sub>entry</sub> − costs</div>
-  <div class="muted">Positive edge is a model discrepancy, not a guarantee of profit.</div>
- </div>
-</section>
-
-<section class="panel builder">
- <div class="panelHead"><div><b>MARKET INPUT</b><small>One ticker per line. Optional probability and cost buffer.</small></div>
- <button class="ghost" id="sample">LOAD EXAMPLE</button></div>
- <div id="rows"></div>
- <div class="actions"><button class="ghost" id="add">＋ ADD MARKET</button><button class="primary" id="analyze">ANALYZE MARKETS →</button></div>
-</section>
-
-<section id="summary" class="summary hidden">
- <div class="metric"><small>MARKETS</small><strong id="nMarkets">—</strong></div>
- <div class="metric"><small>TOP DISCREPANCY</small><strong id="topEdge">—</strong></div>
- <div class="metric"><small>BEST SIDE</small><strong id="topSide">—</strong></div>
- <div class="metric"><small>UPDATED</small><strong id="updated">—</strong></div>
-</section>
-
-<section class="panel hidden" id="resultsPanel">
- <div class="panelHead"><div><b>EDGE RANKING</b><small>Sorted by estimated executable discrepancy</small></div>
- <div class="seg"><button class="active" data-mode="beginner">BEGINNER</button><button data-mode="quant">QUANT</button></div></div>
- <div class="tableWrap"><table>
-  <thead><tr><th>MARKET</th><th>YES BID/ASK</th><th>MODEL YES</th><th>BEST SIDE</th><th>EST. EDGE</th><th>DATA QUALITY</th><th></th></tr></thead>
-  <tbody id="tbody"></tbody>
- </table></div>
-</section>
-
-<section id="detail" class="detail hidden"></section>
-</main>
-<footer>Research tool only · Model estimates are user supplied · Verify settlement rules and data before risking capital.</footer>
-<script src="/app.js"></script>
-</body></html>
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>EdgeLab Auto</title><link rel="stylesheet" href="/style.css"></head><body>
+<header><div><b>EDGE<span>LAB</span></b><small>AUTONOMOUS MARKET RESEARCH</small></div><div class="live">● LIVE</div></header>
+<main><section class="hero"><div class="tag">TICKERS IN → EVIDENCE → PROBABILITY → EDGE</div><h1>Paste markets.<br><i>We do the rest.</i></h1><p>No probability inputs. No manual cost assumptions. EdgeLab classifies each proposition, attempts an independent real-world model, and refuses to manufacture a probability when the required data adapter is unavailable.</p></section>
+<section class="panel scanbox"><div class="head"><b>AUTONOMOUS EDGE SCANNER</b><small>Full sports + crypto statistical sweep</small></div>
+<div class="scaninner"><div><strong>Scan every live Sports + Crypto market</strong><p>Fetches the complete paginated open Kalshi universe, isolates sports and crypto, runs available independent statistical models, and ranks only positive uncertainty-adjusted discrepancies.</p></div><button id="scan">SCAN ALL LIVE →</button></div>
+<div id="scanmeta" class="actions"><span>Not scanned yet</span><span>Sports + crypto · independent reference models · unsupported propositions remain unranked.</span></div></section>
+<section id="scanresults" class="panel hide"><div class="head"><b>ALL-MARKET EDGE RANKING</b><small id="scanstats">—</small></div><div class="scroll"><table><thead><tr><th>RANK</th><th>MARKET</th><th>TYPE</th><th>MODEL YES</th><th>ENTRY</th><th>SIDE</th><th>RAW EDGE</th><th>UNCERTAINTY</th><th>CONSERVATIVE EDGE</th></tr></thead><tbody id="scanbody"></tbody></table></div></section>
+<section class="panel input"><div class="head"><b>MARKET TICKERS</b><small>One per line, comma, or space</small></div><textarea id="tickers" placeholder="KX...&#10;KX..."></textarea><div class="actions"><span id="msg">Ready</span><button id="go">ANALYZE ALL →</button></div></section>
+<section id="stats" class="stats hide"><div><small>MARKETS</small><b id="count">0</b></div><div><small>AUTO-MODELED</small><b id="modeled">0</b></div><div><small>TOP RAW DISCREPANCY</small><b id="top">—</b></div><div><small>UPDATED</small><b id="time">—</b></div></section>
+<section id="results" class="panel hide"><div class="head"><b>EDGE SCANNER</b><small>Independent model vs executable Kalshi price</small></div><div class="scroll"><table><thead><tr><th>MARKET</th><th>TYPE</th><th>YES BID/ASK</th><th>MODEL YES</th><th>UNCERTAINTY</th><th>BEST SIDE</th><th>RAW EDGE</th><th>CONSERVATIVE</th><th></th></tr></thead><tbody id="body"></tbody></table></div></section>
+<section id="detail"></section></main><footer>Research estimates are uncertain and are not guarantees of profit. EdgeLab exposes missing models rather than fabricating probabilities.</footer><script src="/app.js"></script></body></html>

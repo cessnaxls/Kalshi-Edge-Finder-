@@ -1,47 +1,33 @@
-# Kalshi Edge Lab
+# EdgeLab v4 — Sports + Crypto autonomous edge scanner
 
-A deployable research workstation for comparing user/model probability estimates with live Kalshi executable prices.
+Only user input required for individual analysis: Kalshi ticker(s). The full scanner requires no tickers.
 
-## What is implemented
-- Paste N Kalshi market tickers
-- Live public market retrieval through a server-side proxy
-- YES bid/ask, NO ask, spread, volume, liquidity, OI, close time and settlement rule
-- User/model P(YES) input
-- YES and NO executable discrepancy calculation
-- Configurable per-market cost/slippage buffer
-- Ranking by estimated edge
-- Data-quality score based only on market-data quality (not outcome confidence)
-- Beginner-friendly dashboard plus technical inspection panel
-- Mobile/iPad responsive UI
-- Render blueprint
+## Full scanner
+`SCAN ALL LIVE`:
+1. Pages through the complete Kalshi `status=open` universe (up to 1,000/page).
+2. Classifies sports and crypto.
+3. Attempts independent category-specific probability models.
+4. Compares model probability with executable YES/NO ask.
+5. Applies a deliberately conservative model-uncertainty allowance.
+6. Ranks only positive uncertainty-adjusted discrepancies.
 
-## Important modeling rule
-The app deliberately does **not** ask an LLM to hallucinate a probability. A credible probability engine must be category-specific and grounded in evidence. This v1 provides the market-data and valuation layer and accepts a probability from your chosen model/research process.
+## Sports v4
+Sports propositions are matched against independent public game/schedule data. Where a matched event exposes usable consensus reference information, EdgeLab converts the reference spread into a sport-specific margin/win distribution. The model and exact inputs are shown in the audit view.
 
-## Run
-```bash
-npm install
-npm start
-```
-Open http://localhost:3000
+Supported matching targets include NFL, college football, NBA, men's college basketball, MLB, NHL, and major soccer competitions.
 
-## Render
-Push this folder to GitHub, then create a Render Blueprint from `render.yaml`.
+A sports market is NOT ranked if:
+- no independent event can be matched confidently;
+- no usable independent consensus reference is available;
+- the proposition type is not supported by the current model.
 
-## Edge definition
-For YES:
-`edge = model_probability_yes - executable_yes_ask - cost_buffer`
+This is intentional. The scanner never derives its "independent" probability from Kalshi's own price.
 
-For NO:
-`edge = (1 - model_probability_yes) - executable_no_ask - cost_buffer`
+## Crypto
+Supported BTC/ETH threshold propositions use independent public spot-price history plus a realized-volatility threshold model.
 
-The cost buffer is user supplied in cents and is intended to conservatively account for fees/slippage.
+## Interpretation
+Raw edge = independent model probability - executable Kalshi price.
+Conservative edge = raw edge - model uncertainty allowance.
 
-## Next production modules
-1. Category adapters: weather, economics, financial thresholds, sports, politics/news.
-2. Evidence ingestion with source timestamps.
-3. Monte Carlo and ensemble probability models.
-4. Historical prediction ledger, Brier score, log loss and reliability diagrams.
-5. Order-book authenticated feed and trade-flow analytics.
-6. Paper portfolio and forward-test engine.
-7. Optional AI explanation layer that cites evidence but does not fabricate numeric probabilities.
+A positive modeled discrepancy is not proof of mispricing or future profit. Model error, reference-data error, settlement rules, fees, slippage, latency and changing information can eliminate apparent edge.
