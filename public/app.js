@@ -29,7 +29,9 @@ async function progressiveScan(){
  const phase=document.getElementById("scanPhase"),pct=document.getElementById("scanPercent");
  const count=document.getElementById("scanCount"),elapsed=document.getElementById("scanElapsed");
  if(!box)return;
- box.classList.add("show"); fill.style.width="1%"; pct.textContent="1%"; phase.textContent="Starting scan…";
+ box.classList.remove("complete"); box.classList.add("show"); box.style.display="block";
+ fill.style.width="2%"; pct.textContent="2%"; phase.textContent="STARTING FULL-MARKET SCAN…";
+ box.scrollIntoView({behavior:"smooth",block:"nearest"});
  count.textContent="0 / 0 markets"; if(btn)btn.disabled=true;
  const began=Date.now();
  let timer=setInterval(()=>{elapsed.textContent=`${Math.floor((Date.now()-began)/1000)}s`},1000);
@@ -45,7 +47,8 @@ async function progressiveScan(){
      count.textContent=j.total?`${j.done||0} / ${j.total} markets`:j.openMarketsSeen?`${j.openMarketsSeen.toLocaleString()} open markets found`:"Loading markets…";
      if(j.status==="error")throw new Error(j.error||"Scan failed");
      if(j.status==="complete"){
-       renderScanResult(j.result);
+       fill.style.width="100%"; pct.textContent="100%"; phase.textContent="SCAN COMPLETE";
+       box.classList.add("complete"); renderScanResult(j.result);
        break;
      }
    }
