@@ -23,59 +23,33 @@ $("#scan").onclick=async()=>{
   finally{$("#scan").disabled=false}
 };
 
-async function progressiveScan(){
- const btn=document.getElementById("scanBtn");
- const box=document.getElementById("scanProgress"),fill=document.getElementById("scanProgressFill");
- const phase=document.getElementById("scanPhase"),pct=document.getElementById("scanPercent");
- const count=document.getElementById("scanCount"),elapsed=document.getElementById("scanElapsed");
- if(!box)return;
- box.classList.remove("complete"); box.classList.add("show"); box.style.display="block";
- fill.style.width="2%"; pct.textContent="2%"; phase.textContent="STARTING FULL-MARKET SCAN…";
- box.scrollIntoView({behavior:"smooth",block:"nearest"});
- count.textContent="0 / 0 markets"; if(btn)btn.disabled=true;
- const began=Date.now();
- let timer=setInterval(()=>{elapsed.textContent=`${Math.floor((Date.now()-began)/1000)}s`},1000);
+
+async function visibleFullScan(){
+ const btn=document.getElementById("scan"),box=document.getElementById("scanProgress"),
+ fill=document.getElementById("scanProgressFill"),phase=document.getElementById("scanPhase"),
+ pctEl=document.getElementById("scanPercent"),count=document.getElementById("scanCount"),elapsed=document.getElementById("scanElapsed");
+ box.style.display="block";fill.style.width="2%";pctEl.textContent="2%";phase.textContent="STARTING SCAN…";count.textContent="Loading open markets…";btn.disabled=true;
+ const began=Date.now(),clock=setInterval(()=>elapsed.textContent=`${Math.floor((Date.now()-began)/1000)}s`,500);
  try{
-   const r=await fetch("/api/scan/start?universe=all&limit=120",{method:"POST"});
-   const st=await r.json(); if(!r.ok)throw new Error(st.error||"Could not start scan");
-   while(true){
-     await new Promise(x=>setTimeout(x,650));
-     const pr=await fetch(`/api/scan/progress/${encodeURIComponent(st.jobId)}`);
-     const j=await pr.json(); if(!pr.ok)throw new Error(j.error||"Progress request failed");
-     fill.style.width=`${j.percent||0}%`; pct.textContent=`${j.percent||0}%`;
-     phase.textContent=j.phase||"Scanning…";
-     count.textContent=j.total?`${j.done||0} / ${j.total} markets`:j.openMarketsSeen?`${j.openMarketsSeen.toLocaleString()} open markets found`:"Loading markets…";
-     if(j.status==="error")throw new Error(j.error||"Scan failed");
-     if(j.status==="complete"){
-       fill.style.width="100%"; pct.textContent="100%"; phase.textContent="SCAN COMPLETE";
-       box.classList.add("complete"); renderScanResult(j.result);
-       break;
-     }
-   }
- }catch(e){
-   phase.textContent=`Scan failed: ${e.message}`; pct.textContent="ERROR"; fill.style.width="100%";
- }finally{clearInterval(timer);if(btn)btn.disabled=false}
+  const r=await fetch("/api/scan/start?universe=all&limit=120",{method:"POST"}),a=await r.json();
+  if(!r.ok)throw Error(a.error||"Could not start scan");
+  while(true){
+   await new Promise(q=>setTimeout(q,500));
+   const rr=await fetch(`/api/scan/progress/${encodeURIComponent(a.jobId)}`,{cache:"no-store"}),j=await rr.json();
+   if(!rr.ok)throw Error(j.error||"Progress failed");
+   const p=Math.max(2,Math.min(100,Number(j.percent)||2));fill.style.width=`${p}%`;pctEl.textContent=`${Math.round(p)}%`;phase.textContent=(j.phase||"SCANNING…").toUpperCase();
+   count.textContent=j.total?`${j.done||0} / ${j.total} markets analyzed`:j.openMarketsSeen?`${Number(j.openMarketsSeen).toLocaleString()} open markets found`:"Loading open markets…";
+   if(j.status==="error")throw Error(j.error||"Scan failed");
+   if(j.status==="complete"){fill.style.width="100%";pctEl.textContent="100%";phase.textContent="SCAN COMPLETE";renderFullScan(j.result);break}
+  }
+ }catch(e){phase.textContent=`SCAN FAILED — ${e.message}`;pctEl.textContent="ERROR";fill.style.width="100%"}
+ finally{clearInterval(clock);btn.disabled=false}
 }
-
-function renderScanResult(j){
- const stat=document.getElementById("scanStats");
- if(stat)stat.textContent=`${j.openMarketsSeen.toLocaleString()} open · ${j.selectedMarkets.toLocaleString()} selected · ${j.modeled.toLocaleString()} modeled · ${j.independent} independent / ${j.fallback} fallback · ${j.positiveEdges} ranked candidates`;
- const body=document.getElementById("scanBody");
- if(!body)return;
- const arr=j.ranked?.length?j.ranked:(j.coverage||[]);
- body.innerHTML=arr.length?arr.map((x,i)=>`<tr>
-   <td>${i+1}</td><td><b>${x.title||x.ticker}</b><br><small>${x.ticker||""}</small></td>
-   <td>${x.category||"—"}</td><td>${x.modelProbability==null?"—":pc(x.modelProbability)}</td>
-   <td>${x.bestEntry==null?"—":pc(x.bestEntry)}</td><td>${x.bestSide||"—"}</td>
-   <td class="${(x.rawEdge??0)>=0?"pos":"neg"}">${x.rawEdge==null?"—":(x.rawEdge>=0?"+":"")+pc(x.rawEdge)}</td>
-   <td>${x.uncertainty==null?"—":pc(x.uncertainty)}</td>
-   <td class="${(x.conservativeEdge??0)>=0?"pos":"neg"}">${x.conservativeEdge==null?"—":(x.conservativeEdge>=0?"+":"")+pc(x.conservativeEdge)}</td>
-   <td class="${x.structural?.length?"pos":""}">${x.structural?.length?x.structural[0].type:"—"}</td>
-   <td>${x.microLabel||"—"}</td></tr>`).join(""):`<tr><td colspan="11" class="state">No markets returned.</td></tr>`;
+function renderFullScan(j){
+ const sec=document.getElementById("scanresults"),stats=document.getElementById("scanstats"),body=document.getElementById("scanbody");
+ if(sec)sec.classList.remove("hide");
+ if(stats)stats.textContent=`${j.openMarketsSeen} open · ${j.analyzedMarkets} analyzed · ${j.modeled} modeled · ${j.positiveEdges} ranked`;
+ if(!body)return; const arr=j.ranked?.length?j.ranked:(j.coverage||[]);
+ body.innerHTML=arr.map((x,i)=>`<tr><td>${i+1}</td><td>${x.title||x.ticker}<br><small>${x.ticker||""}</small></td><td>${x.category||"—"}</td><td>${x.modelProbability==null?"—":pc(x.modelProbability)}</td><td>${x.bestEntry==null?"—":pc(x.bestEntry)}</td><td>${x.bestSide||"—"}</td><td>${x.rawEdge==null?"—":pc(x.rawEdge)}</td><td>${x.uncertainty==null?"—":pc(x.uncertainty)}</td><td>${x.conservativeEdge==null?"—":pc(x.conservativeEdge)}</td><td>${x.structural?.length?x.structural[0].type:"—"}</td><td>${x.microLabel||"—"}</td></tr>`).join("");
 }
-
-// Use the progressive job endpoint for Scan All. Capture phase prevents the older
-// one-shot click handler from firing as well.
-document.addEventListener("click",e=>{
- if(e.target?.id==="scanBtn"){e.preventDefault();e.stopImmediatePropagation();progressiveScan()}
-},true);
+document.addEventListener("click",e=>{if(e.target?.id==="scan"){e.preventDefault();e.stopImmediatePropagation();visibleFullScan()}},true);

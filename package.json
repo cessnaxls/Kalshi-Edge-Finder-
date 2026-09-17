@@ -1,6 +1,6 @@
 {
   "name": "kalshi-edge-lab-v7",
-  "version": "7.0.4",
+  "version": "7.0.5",
   "private": true,
   "type": "module",
   "scripts": {
