@@ -428,35 +428,46 @@ async function analyzeOne(m){
     state:model?.fallback?"FALLBACK MODEL":(model?"INDEPENDENT MODEL":(error?"DATA ERROR":"NO MODEL")),dataQuality:microScore({spread,vol,oi}),
     microScore:micro.score,microLabel:micro.label,microInputs:micro.inputs,structural:[]};
 }
-app.get("/api/scan",async(req,res)=>{
+app.get("/api/scan", async(req,res)=>{
  try{
-   const universe=(req.query.universe||"sports_crypto").toLowerCase();
+   const universe=req.query.universe||"all";
+   const minEdge=Math.max(0,Number(req.query.min_edge||0))/100;
+   const maxAnalyze=Math.max(25,Math.min(250,Number(req.query.limit||120)));
    const all=await allOpenMarkets();
+   const structural=structuralEngine(all);
    let selected=all.filter(m=>{
-     let c=scanKind(m);
-     return universe==="all" || (universe==="sports_crypto" && (c==="sports"||c==="crypto")) ||
+     const c=scanKind(m);
+     return universe==="all" ||
+       (universe==="sports_crypto"&&(c==="sports"||c==="crypto"||c==="financial")) ||
        universe===c || (universe==="crypto"&&c==="financial");
    });
-   const structural=structuralEngine(all);
-   // Analyze every selected market. Crypto models use independent public reference data.
-   // Sports remain visible but are never assigned a fabricated probability without a verified sports adapter.
+   const activity=m=>Number(m.volume_24h_fp||m.volume_fp||m.volume||0)+Number(m.open_interest_fp||m.open_interest||0);
+   selected.sort((a,b)=>activity(b)-activity(a));
+   const totalSelected=selected.length;
+   selected=selected.slice(0,maxAnalyze);
    let out=[];
-   // Small batches protect free public reference feeds from bursts.
-   for(let i=0;i<selected.length;i+=8){
-     let batch=await Promise.all(selected.slice(i,i+8).map(analyzeOne));
+   for(let i=0;i<selected.length;i+=4){
+     const batch=await Promise.all(selected.slice(i,i+4).map(async m=>{
+       try{return await analyzeOne(m)}
+       catch(e){return {ticker:m.ticker,title:m.title||m.ticker,category:scanKind(m),state:"ANALYSIS ERROR",
+         error:e.message,modelProbability:null,modelIndependent:false,modelFallback:false,
+         structural:structural.get(m.ticker)||[],microLabel:"UNAVAILABLE"}}
+     }));
      out.push(...batch);
    }
-   const minEdge=Math.max(0,Number(req.query.min_edge||0))/100;
-   for(const x of out)x.structural=structural.get(x.ticker)||[];
-   let ranked=out.filter(x=>(x.modelProbability!=null && x.modelIndependent && x.conservativeEdge>minEdge)||x.structural.length)
+   for(const x of out)x.structural=structural.get(x.ticker)||x.structural||[];
+   let ranked=out.filter(x=>(x.modelProbability!=null&&x.modelIndependent&&x.conservativeEdge>minEdge)||x.structural.length)
      .map(x=>({...x,rankScore:Math.max((x.modelIndependent?x.conservativeEdge:null)??-1,...x.structural.map(a=>a.gross||0))}))
      .sort((a,b)=>b.rankScore-a.rankScore);
-   res.json({universe,openMarketsSeen:all.length,selectedMarkets:selected.length,modeled:out.filter(x=>x.modelProbability!=null).length,
-     positiveEdges:ranked.length,unsupported:out.filter(x=>x.modelProbability==null).length,
-     structuralAlerts:[...structural.values()].reduce((a,b)=>a+b.length,0),
-     ranked,coverage:out,at:new Date().toISOString(),
-     note:"Sports and crypto are scanned. Sports propositions are modeled from independent schedules/results and recent team scoring history when the event and proposition can be matched; unsupported proposition types remain unranked."});
- }catch(e){res.status(502).json({error:e.message})}
+   const modeled=out.filter(x=>x.modelProbability!=null).length;
+   const independent=out.filter(x=>x.modelProbability!=null&&x.modelIndependent).length;
+   const fallback=out.filter(x=>x.modelFallback).length;
+   res.json({universe,openMarketsSeen:all.length,selectedMarkets:totalSelected,analyzedMarkets:out.length,
+     modeled,independent,fallback,positiveEdges:ranked.length,
+     structuralAlerts:[...structural.values()].reduce((a,b)=>a+b.length,0),ranked,coverage:out,
+     truncated:totalSelected>selected.length,analysisLimit:maxAnalyze,at:new Date().toISOString(),
+     note:ranked.length?"Ranked candidates are shown first; analyzed coverage is also returned.":
+       "Scan completed. No independent positive discrepancy cleared the threshold; analyzed markets are still returned."});
+ }catch(e){console.error("SCAN ERROR",e);res.status(500).json({error:e.message})}
 });
-
 app.listen(PORT,()=>console.log("Edge Lab v7 on",PORT));

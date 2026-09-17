@@ -8,11 +8,11 @@ window.detail=i=>{let x=D[i],modeled=x.modelProbability!=null;$("#detail").inner
 $("#scan").onclick=async()=>{
   $("#scan").disabled=true; $("#scanmeta").firstElementChild.textContent="Scanning complete open-market universe…";
   try{
-    let r=await fetch("/api/scan?universe=sports_crypto"),j=await r.json(); if(!r.ok)throw Error(j.error);
+    let r=await fetch("/api/scan?universe=all"),j=await r.json(); if(!r.ok)throw Error(j.error);
     $("#scanresults").classList.remove("hide");
     $("#scanstats").textContent=`${j.openMarketsSeen.toLocaleString()} open · ${j.selectedMarkets.toLocaleString()} sports/crypto · ${j.modeled.toLocaleString()} fundamental models · ${j.structuralAlerts.toLocaleString()} structural alerts · ${j.positiveEdges} ranked candidates`;
     $("#scanmeta").firstElementChild.textContent=`Updated ${new Date(j.at).toLocaleTimeString()}`;
-    $("#scanbody").innerHTML=j.ranked.length?j.ranked.map((x,i)=>`<tr>
+    $("#scanbody").innerHTML=(j.ranked?.length?j.ranked:j.coverage||[]).length?(j.ranked?.length?j.ranked:j.coverage||[]).map((x,i)=>`<tr>
       <td class="rank">#${i+1}</td><td class="market"><b>${x.title||x.ticker}</b><small>${x.ticker}</small></td>
       <td>${x.category.toUpperCase()}</td><td>${pc(x.modelProbability)}</td>
       <td>${ct(x.bestSide==="YES"?x.ask:x.noAsk)}</td><td>${x.bestSide}</td>
