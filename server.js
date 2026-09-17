@@ -428,6 +428,72 @@ async function analyzeOne(m){
     state:model?.fallback?"FALLBACK MODEL":(model?"INDEPENDENT MODEL":(error?"DATA ERROR":"NO MODEL")),dataQuality:microScore({spread,vol,oi}),
     microScore:micro.score,microLabel:micro.label,microInputs:micro.inputs,structural:[]};
 }
+
+const scanJobs=new Map();
+function scanJobId(){return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`}
+function setJob(id,patch){const j=scanJobs.get(id);if(j)Object.assign(j,patch,{updatedAt:Date.now()})}
+setInterval(()=>{const cutoff=Date.now()-30*60*1000;for(const [id,j] of scanJobs)if((j.updatedAt||0)<cutoff)scanJobs.delete(id)},5*60*1000).unref();
+
+app.post("/api/scan/start",async(req,res)=>{
+ const id=scanJobId();
+ const universe=req.query.universe||"all";
+ const maxAnalyze=Math.max(25,Math.min(250,Number(req.query.limit||120)));
+ const minEdge=Math.max(0,Number(req.query.min_edge||0))/100;
+ scanJobs.set(id,{id,status:"starting",phase:"Loading open Kalshi markets",done:0,total:0,percent:1,
+   universe,maxAnalyze,createdAt:Date.now(),updatedAt:Date.now()});
+ res.status(202).json({jobId:id});
+ (async()=>{
+  try{
+   const all=await allOpenMarkets();
+   setJob(id,{status:"running",phase:"Building structural relationships",openMarketsSeen:all.length,percent:5});
+   const structural=structuralEngine(all);
+   let selected=all.filter(m=>{
+     const c=scanKind(m);
+     return universe==="all"||(universe==="sports_crypto"&&(c==="sports"||c==="crypto"||c==="financial"))||
+       universe===c||(universe==="crypto"&&c==="financial");
+   });
+   const activity=m=>Number(m.volume_24h_fp||m.volume_fp||m.volume||0)+Number(m.open_interest_fp||m.open_interest||0);
+   selected.sort((a,b)=>activity(b)-activity(a));
+   const totalSelected=selected.length;
+   selected=selected.slice(0,maxAnalyze);
+   const total=selected.length;
+   setJob(id,{phase:"Analyzing markets",selectedMarkets:totalSelected,total,done:0,percent:8});
+   let out=[];
+   for(let i=0;i<selected.length;i+=4){
+     const chunk=selected.slice(i,i+4);
+     const batch=await Promise.all(chunk.map(async m=>{
+       try{return await analyzeOne(m)}
+       catch(e){return {ticker:m.ticker,title:m.title||m.ticker,category:scanKind(m),state:"ANALYSIS ERROR",
+         error:e.message,modelProbability:null,modelIndependent:false,modelFallback:false,
+         structural:structural.get(m.ticker)||[],microLabel:"UNAVAILABLE"}}
+     }));
+     out.push(...batch);
+     const done=Math.min(i+chunk.length,total);
+     const pct=8+Math.round((done/Math.max(1,total))*87);
+     setJob(id,{done,percent:Math.min(95,pct),phase:`Analyzing markets — ${done} of ${total}`});
+   }
+   for(const x of out)x.structural=structural.get(x.ticker)||x.structural||[];
+   setJob(id,{phase:"Ranking discrepancies",percent:97});
+   let ranked=out.filter(x=>(x.modelProbability!=null&&x.modelIndependent&&x.conservativeEdge>minEdge)||x.structural.length)
+     .map(x=>({...x,rankScore:Math.max((x.modelIndependent?x.conservativeEdge:null)??-1,...x.structural.map(a=>a.gross||0))}))
+     .sort((a,b)=>b.rankScore-a.rankScore);
+   const result={universe,openMarketsSeen:all.length,selectedMarkets:totalSelected,analyzedMarkets:out.length,
+     modeled:out.filter(x=>x.modelProbability!=null).length,
+     independent:out.filter(x=>x.modelProbability!=null&&x.modelIndependent).length,
+     fallback:out.filter(x=>x.modelFallback).length,positiveEdges:ranked.length,
+     structuralAlerts:[...structural.values()].reduce((a,b)=>a+b.length,0),ranked,coverage:out,
+     truncated:totalSelected>selected.length,analysisLimit:maxAnalyze,at:new Date().toISOString()};
+   setJob(id,{status:"complete",phase:"Complete",done:total,total,percent:100,result});
+  }catch(e){console.error("SCAN JOB ERROR",e);setJob(id,{status:"error",phase:"Scan failed",percent:100,error:e.message})}
+ })();
+});
+
+app.get("/api/scan/progress/:id",(req,res)=>{
+ const j=scanJobs.get(req.params.id);
+ if(!j)return res.status(404).json({error:"Scan job not found or expired"});
+ res.json(j);
+});
+
 app.get("/api/scan", async(req,res)=>{
  try{
    const universe=req.query.universe||"all";

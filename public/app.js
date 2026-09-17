@@ -22,3 +22,57 @@ $("#scan").onclick=async()=>{
   }catch(e){$("#scanmeta").firstElementChild.textContent=e.message}
   finally{$("#scan").disabled=false}
 };
+
+async function progressiveScan(){
+ const btn=document.getElementById("scanBtn");
+ const box=document.getElementById("scanProgress"),fill=document.getElementById("scanProgressFill");
+ const phase=document.getElementById("scanPhase"),pct=document.getElementById("scanPercent");
+ const count=document.getElementById("scanCount"),elapsed=document.getElementById("scanElapsed");
+ if(!box)return;
+ box.classList.add("show"); fill.style.width="1%"; pct.textContent="1%"; phase.textContent="Starting scan…";
+ count.textContent="0 / 0 markets"; if(btn)btn.disabled=true;
+ const began=Date.now();
+ let timer=setInterval(()=>{elapsed.textContent=`${Math.floor((Date.now()-began)/1000)}s`},1000);
+ try{
+   const r=await fetch("/api/scan/start?universe=all&limit=120",{method:"POST"});
+   const st=await r.json(); if(!r.ok)throw new Error(st.error||"Could not start scan");
+   while(true){
+     await new Promise(x=>setTimeout(x,650));
+     const pr=await fetch(`/api/scan/progress/${encodeURIComponent(st.jobId)}`);
+     const j=await pr.json(); if(!pr.ok)throw new Error(j.error||"Progress request failed");
+     fill.style.width=`${j.percent||0}%`; pct.textContent=`${j.percent||0}%`;
+     phase.textContent=j.phase||"Scanning…";
+     count.textContent=j.total?`${j.done||0} / ${j.total} markets`:j.openMarketsSeen?`${j.openMarketsSeen.toLocaleString()} open markets found`:"Loading markets…";
+     if(j.status==="error")throw new Error(j.error||"Scan failed");
+     if(j.status==="complete"){
+       renderScanResult(j.result);
+       break;
+     }
+   }
+ }catch(e){
+   phase.textContent=`Scan failed: ${e.message}`; pct.textContent="ERROR"; fill.style.width="100%";
+ }finally{clearInterval(timer);if(btn)btn.disabled=false}
+}
+
+function renderScanResult(j){
+ const stat=document.getElementById("scanStats");
+ if(stat)stat.textContent=`${j.openMarketsSeen.toLocaleString()} open · ${j.selectedMarkets.toLocaleString()} selected · ${j.modeled.toLocaleString()} modeled · ${j.independent} independent / ${j.fallback} fallback · ${j.positiveEdges} ranked candidates`;
+ const body=document.getElementById("scanBody");
+ if(!body)return;
+ const arr=j.ranked?.length?j.ranked:(j.coverage||[]);
+ body.innerHTML=arr.length?arr.map((x,i)=>`<tr>
+   <td>${i+1}</td><td><b>${x.title||x.ticker}</b><br><small>${x.ticker||""}</small></td>
+   <td>${x.category||"—"}</td><td>${x.modelProbability==null?"—":pc(x.modelProbability)}</td>
+   <td>${x.bestEntry==null?"—":pc(x.bestEntry)}</td><td>${x.bestSide||"—"}</td>
+   <td class="${(x.rawEdge??0)>=0?"pos":"neg"}">${x.rawEdge==null?"—":(x.rawEdge>=0?"+":"")+pc(x.rawEdge)}</td>
+   <td>${x.uncertainty==null?"—":pc(x.uncertainty)}</td>
+   <td class="${(x.conservativeEdge??0)>=0?"pos":"neg"}">${x.conservativeEdge==null?"—":(x.conservativeEdge>=0?"+":"")+pc(x.conservativeEdge)}</td>
+   <td class="${x.structural?.length?"pos":""}">${x.structural?.length?x.structural[0].type:"—"}</td>
+   <td>${x.microLabel||"—"}</td></tr>`).join(""):`<tr><td colspan="11" class="state">No markets returned.</td></tr>`;
+}
+
+// Use the progressive job endpoint for Scan All. Capture phase prevents the older
+// one-shot click handler from firing as well.
+document.addEventListener("click",e=>{
+ if(e.target?.id==="scanBtn"){e.preventDefault();e.stopImmediatePropagation();progressiveScan()}
+},true);
